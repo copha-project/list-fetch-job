@@ -1,0 +1,6 @@
+{
+    "name": "list_fetch",
+    "desc": "fetch web list data",
+    "repository": "https://github.com/copha-project/list-fetch-job",
+    "version": 1
+}
