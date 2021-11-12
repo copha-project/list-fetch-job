@@ -1,0 +1,26 @@
+{
+  "name": "list-fetch-task",
+  "version": "0.0.1",
+  "description": "a copha task to fetch list data.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/copha-project/list-fetch-task.git"
+  },
+  "keywords": [
+    "copha",
+    "task"
+  ],
+  "author": "aong",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/copha-project/list-fetch-task/issues"
+  },
+  "homepage": "https://github.com/copha-project/list-fetch-task#readme",
+  "dependencies": {
+    "uni-utils": "^1.0.13"
+  }
+}

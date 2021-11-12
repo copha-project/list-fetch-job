@@ -1,6 +1,7 @@
-const { Job, Utils } = require('copha')
+const { Task } = require('copha')
+const Utils = require('uni-utils')
 
-class ListJob extends Job {
+class ListTask extends Task {
     constructor(taskConf) {
         super(taskConf)
         this.#initValue()
@@ -625,4 +626,4 @@ class ListJob extends Job {
     }
 }
 
-module.exports = ListJob
+module.exports = ListTask
