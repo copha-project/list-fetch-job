@@ -2,12 +2,14 @@ const { Task } = require('copha')
 const Utils = require('uni-utils')
 
 class ListTask extends Task {
-    constructor(taskConf) {
-        super(taskConf)
+    constructor() {
+        super()
+    }
+    async init(){
         this.#initValue()
     }
     #initValue() {
-        this.processConfig = this.conf
+        this.processConfig = this.conf.Process
 
         this.currentPage = 1
         this.pages = 1
@@ -28,6 +30,15 @@ class ListTask extends Task {
         this.driver = null
         this.custom = null
     }
+
+    async runBefore() {
+        if (this.conf?.CustomStage?.RunBefore) {
+            const custom = require(this.getResourcePath('custom','js'))
+            await custom?.runBefore.call(this)
+            this.log.debug('Runbefore in task finished')
+        }
+    }
+
     async runTest(){
         let currentPage = 1
         if (this.conf?.Test?.GetCurrentPage) {
@@ -176,7 +187,7 @@ class ListTask extends Task {
     }
 
     async importReworkPages() {
-        const pagesString = await Utils.readFile(this.getJobFile('rework_pages.json'))
+        const pagesString = await Utils.readFile(this.getResourcePath('rework_pages'))
         try {
             const pages = JSON.parse(pagesString)
             if (pages?.length > 0) {
@@ -199,7 +210,7 @@ class ListTask extends Task {
         }
     }
     async #getLastPage() {
-        const page = await Utils.readFile(this.getJobFile('last_page.txt'))
+        const page = await Utils.readFile(this.getResourcePath('last_page','txt'))
         return parseInt(page) || 1
     }
     async #goNext() {
@@ -259,7 +270,7 @@ class ListTask extends Task {
                 break;
         }
 
-        let checkFunc = this.getCurrentPage
+        let checkFunc = this.getCurrentPage.bind(this)
 
         if(goPageInfo?.customCheck?.enable){
             this.log.info('invoke custom check for goPgae')
@@ -338,7 +349,7 @@ class ListTask extends Task {
                 break;
             case 'xpath':
                 {
-                    page = await this.driver.findElementsByXpath(theWayInfo.value)
+                    page = await this.driver.findElementByXpath(theWayInfo.value)
                     page = await page.getText()
                     if (theWayInfo?.regexp) {
                         try {
@@ -400,10 +411,12 @@ class ListTask extends Task {
         }
         return resList
     }
+
     async getItemData(item) {
         if(this.conf.CustomStage?.GetItemData){
             return this.custom.getItemData.call(this,item)
         }
+        this.log.debug(`item tag name: ${await item.getTagName()}`)
         let itemData = []
         // 处理特殊情况下的 item
         if(Array.isArray(item)){
@@ -425,27 +438,21 @@ class ListTask extends Task {
             itemData.push(text||'')
         }
 
-        // download ?
-        // if(itemData.length==8){
-        //     const url = itemData[itemData.length-1].replace(`/license-biz/resources/1.0.0/js/plugins/Pdfjs/web/viewer.html?file=`,'').replace(/"/g,'')
-        //     const savePath = path.join(this.conf.main.dataPath,'download',`${itemData[0].replace(/"/g,'')}-${itemData[1].replace(/"/g,'')}.pdf`)
-        //     if(await Utils.checkFile(savePath)) {
-        //
-        //     }else{
-        //         this.log.info('download file:',url)
-        //         const resp = await require('node-fetch')(new URL(url),{timeout:20000})
-        //         const pipeline = require('util').promisify(require('stream').pipeline)
-        //         const saveFile = require('fs').createWriteStream(savePath)
-        //         await pipeline(resp.body, saveFile)
-        //
-        //         // await Utils.download(url,{
-        //         //     savePath: savePath
-        //         // })
-        //     }
-        // }
+        await this.getExtraContent(item, itemData)
+
+        await this.getCustomAction(item, itemData)
+
         return itemData
     }
-    async getExtraContent(itemData){
+
+    async getCustomAction(item, itemData){
+        if (this.conf?.CustomStage?.GetCustomItem) {
+            const custom = require(this.getResourcePath('custom','js'))
+            itemData.push(await custom?.getItem.call(this, item))
+        }
+    }
+
+    async getExtraContent(item, itemData){
         if(!this.processConfig.GetItemData?.extraContent) return
         this.log.info('do some for extra Content')
         const itemConfig = this.processConfig.GetItemData?.content
@@ -493,8 +500,8 @@ class ListTask extends Task {
                         await clickItem.click()
                     }
                     if(fetchContentInfo.newTab) {
-                        await this.waitTwoTab()
-                        await this.swithToNewTab()
+                        await this.driver.waitTwoTab()
+                        await this.driver.swithToNewTab()
                     }
                     // 处理新的页面数据
                     const clickContentInfo = fetchContentInfo.contentSelector
@@ -513,6 +520,7 @@ class ListTask extends Task {
                     if(itemConfig?.replace){
                         itemData = [itemData[0]]
                     }
+
                     for (const item of content) {
                         if ((await item?.getTagName()).toLowerCase() === 'a'){
                             itemData.push(await item.getAttribute('href'))
@@ -523,11 +531,10 @@ class ListTask extends Task {
                             itemData.push(await item.getText())
                         }
                     }
-                    console.log(itemData[itemData.length-1]);
                     await Utils.sleep(1000)
                     // 关闭或者返回
                     if(fetchContentInfo.newTab){
-                        await this.closeCurrentTab()
+                        await this.driver.closeCurrentTab()
                     }else{
                         await this.driver_.navigate().back()
                     }
