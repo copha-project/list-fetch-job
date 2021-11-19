@@ -79,7 +79,7 @@ class ListTask extends Task {
         this.log.info(`test end.`)
     }
     async run(){
-        this.log.info(this.getMsg(7,this.taskName))
+        this.log.info(this.getMsg(7,this.name))
         await this.#loadState()
         await this.#initPageInfo()
         this.vStartState = true
