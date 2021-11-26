@@ -39,6 +39,14 @@ class ListTask extends Task {
         }
     }
 
+    async getListBefore(){
+        if (this.conf?.CustomStage?.GetListBefore) {
+            const custom = require(this.getResourcePath('custom','js'))
+            await custom?.getListBefore.call(this)
+            this.log.debug('GetListBefore in task finished')
+        }
+    }
+
     async runTest(){
         let currentPage = 1
         if (this.conf?.Test?.GetCurrentPage) {
@@ -105,6 +113,7 @@ class ListTask extends Task {
             // 检查是否有停止信号
             await this.checkNeedStop()
             try {
+                await this.getListBefore()
                 const notDoneList = await this.#doList()
                 if (notDoneList.length > 0) {
                     throw new Error('do list not complete')
