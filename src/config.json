@@ -17,7 +17,10 @@
         "RunBefore": false,
         "GetItemId": false,
         "GetListBefore": false,
-        "GetCustomItem": false
+        "GetCustomItem": false,
+        "GoPageAfter": false,
+        "DoExtraContentCheck": false,
+        "DoExtraContent": false
     },
     "Process":{
         "GetPages": {
@@ -26,7 +29,7 @@
                 "value": 1
             },
             "xpath": {
-                "type": "xpath",
+                "value": "",
                 "regexp": "\\/(\\d+)"
             },
             "css":{
@@ -119,7 +122,8 @@
         "GetItemId": {
             "selector": {
                 "type": "xpath",
-                "value": ""
+                "value": "",
+                "attr": ""
             },
             "regexp": "",
             "startWithIdx": false

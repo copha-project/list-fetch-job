@@ -1,5 +1,4 @@
-const { Task } = require('copha')
-const Utils = require('uni-utils')
+const { Task, Utils } = require('copha')
 
 class ListTask extends Task {
     constructor() {
@@ -47,8 +46,30 @@ class ListTask extends Task {
         }
     }
 
+    async goPageAfter(){
+        if (this.conf?.CustomStage?.GoPageAfter) {
+            const custom = require(this.getResourcePath('custom','js'))
+            await custom?.goPageAfter.call(this)
+            this.log.debug('GoPageAfter in task finished')
+        }
+    }
+
+    async doExtraContentCheck(){
+        if (this.conf?.CustomStage?.DoExtraContentCheck) {
+            const custom = require(this.getResourcePath('custom','js'))
+            await custom.doExtraContentCheck.call(this)
+            this.log.debug('doExtraContentCheck finished')
+        }
+    }
+
+    async doExtraContent(data){
+        const custom = require(this.getResourcePath('custom','js'))
+        return custom.doExtraContent.call(this,data)
+    }
+
     async runTest(){
         let currentPage = 1
+        this.vTestState = true
         if (this.conf?.Test?.GetCurrentPage) {
             this.log.info('run test for getCurrentPage:')
             currentPage = await this.getCurrentPage()
@@ -58,7 +79,7 @@ class ListTask extends Task {
         if (this.conf?.Test?.GoPage) {
             this.log.info('run test for goPage:')
             await this.goPage(currentPage+2)
-            this.log.info(`goPage ok\n`)
+            this.log.info(`goPage ${currentPage+2} ok\n`)
         }
 
         if (this.conf?.Test?.GetPages) {
@@ -82,6 +103,7 @@ class ListTask extends Task {
             this.log.info('run test for getItemData:')
             const itemData = await this.getItemData(list[0])
             this.log.info(`getItemData ok : ${itemData}\n`)
+            console.log(itemData)
         }
 
         this.log.info(`test end.`)
@@ -281,11 +303,15 @@ class ListTask extends Task {
 
         let checkFunc = this.getCurrentPage.bind(this)
 
+        await this.goPageAfter()
+
         if(goPageInfo?.customCheck?.enable){
             this.log.info('invoke custom check for goPgae')
             const customCheck = goPageInfo?.customCheck
             checkFunc = async () => {
+                await this.goPageAfter()
                 let checkItem = await this.driver.findElementsBy(customCheck.type,(customCheck.value))
+                checkItem.length && this.log.debug(`checkFunc find item: ${await checkItem[0].getTagName()}`)
                 if(customCheck.display){
                     if(checkItem.length==0) return -1
                 }else{
@@ -320,7 +346,9 @@ class ListTask extends Task {
                 break;
             case 'xpath':
                 {
-                    pages = await this.driver.findElementByXpath(pagesInfo.value).getText()
+                    const pagesElment = await this.driver.findElementByXpath(pagesInfo.value)
+                    this.log.debug(`get pages element is: ${await pagesElment?.getTagName()}`)
+                    pages = await pagesElment?.getText()
                     if (pagesInfo.regexp) {
                         try {
                             pages = parseInt(new RegExp(pagesInfo.regexp).exec(pages)[1])
@@ -425,7 +453,7 @@ class ListTask extends Task {
         if(this.conf.CustomStage?.GetItemData){
             return this.custom.getItemData.call(this,item)
         }
-        this.log.debug(`item tag name: ${await item.getTagName()}`)
+        this.log.debug(`getItemData item tag name: ${await item.getTagName()}`)
         let itemData = []
         // 处理特殊情况下的 item
         if(Array.isArray(item)){
@@ -447,9 +475,9 @@ class ListTask extends Task {
             itemData.push(text||'')
         }
 
-        await this.getExtraContent(item, itemData)
+        itemData = await this.getExtraContent(item, itemData)
 
-        await this.getCustomAction(item, itemData)
+        itemData = await this.getCustomAction(item, itemData)
 
         return itemData
     }
@@ -459,10 +487,12 @@ class ListTask extends Task {
             const custom = require(this.getResourcePath('custom','js'))
             itemData.push(await custom?.getItem.call(this, item))
         }
+
+        return itemData
     }
 
     async getExtraContent(item, itemData){
-        if(!this.processConfig.GetItemData?.extraContent) return
+        if(!this.processConfig.GetItemData?.extraContent) return itemData
         this.log.info('do some for extra Content')
         const itemConfig = this.processConfig.GetItemData?.content
         const contentFetchType = itemConfig?.use
@@ -499,19 +529,24 @@ class ListTask extends Task {
                         this.log.err(`clearTab err: ${e.message}`)
                         throw(`clearTab err: ${e.message}`)
                     }
-                    if(fetchContentInfo.selector.type=='self'){
+
+                    if(fetchContentInfo.selector.type == 'self'){
                         await item.click()
                     }else{
-                        let clickItem = await item.findElementsBy(fetchContentInfo.selector.type,fetchContentInfo.selector.value)
-                        if(clickItem.length!=1) break
-                        clickItem = clickItem[0]
+                        let clickItem = await this.driver.findElementBy(fetchContentInfo.selector.type,fetchContentInfo.selector.value, item)
 
+                        this.log.debug(`getExtraContent click item: ${await clickItem.getTagName()}`);
                         await clickItem.click()
                     }
+
                     if(fetchContentInfo.newTab) {
                         await this.driver.waitTwoTab()
                         await this.driver.swithToNewTab()
                     }
+
+                    // waitting page
+                    await this.doExtraContentCheck()
+
                     // 处理新的页面数据
                     const clickContentInfo = fetchContentInfo.contentSelector
                     await Utils.sleep(1000)
@@ -523,23 +558,37 @@ class ListTask extends Task {
                             break;
                         default:
                             {
-                                content = await this.driver.findElementsBy(clickContentInfo.type,(clickContentInfo.value))
+                                content = await this.driver.findElementsBy(clickContentInfo.type,clickContentInfo.value)
                             }
                     }
                     if(itemConfig?.replace){
                         itemData = [itemData[0]]
                     }
+                    this.log.debug(`getExtraContent data length: ${content.length}`)
 
-                    for (const item of content) {
-                        if ((await item?.getTagName()).toLowerCase() === 'a'){
-                            itemData.push(await item.getAttribute('href'))
-                        }
-                        if (clickContentInfo?.attr){
-                            itemData.push(await item.getAttribute(clickContentInfo.attr))
-                        }else{
-                            itemData.push(await item.getText())
+                    // take Screenshot
+                    if(this.vTestState){
+                        const body = await this.driver.findElementByCss('body')
+                        const pic = this.driver.takeScreenshot()
+                        await Utils.saveFile(pic,`/tmp/${itemData[0]}.png`,'base64')
+                    }
+
+                    if(this.conf.CustomStage?.DoExtraContent){
+                        itemData = itemData.concat(await this.doExtraContent(content))
+                    }else{
+                        for (const item of content) {
+                            if ((await item?.getTagName()).toLowerCase() === 'a'){
+                                itemData.push(await item.getAttribute('href'))
+                            }
+                            if (clickContentInfo?.attr){
+                                itemData.push(await item.getAttribute(clickContentInfo.attr))
+                            }else{
+                                const elementText = await item.getText()
+                                itemData.push(elementText?.replace(/\n/g,''))
+                            }
                         }
                     }
+
                     await Utils.sleep(1000)
                     // 关闭或者返回
                     if(fetchContentInfo.newTab){
@@ -551,7 +600,9 @@ class ListTask extends Task {
             default:
                 // pass
         }
+        return itemData
     }
+
     async getItemId(item) {
         if(this.conf.CustomStage?.GetItemId){
             return this.custom.getItemId.call(this,item)
@@ -567,7 +618,7 @@ class ListTask extends Task {
             return  id;
         }
         const locValue = this.processConfig.GetItemId?.selector?.value
-        let selector = this.driver.buildSelectorForXpath('locValue')
+        let selector = this.driver.buildSelectorForXpath(locValue)
         switch (this.processConfig.GetItemId?.selector?.type) {
             case "id":
                 selector = this.driver.buildSelectorForId(locValue)
@@ -588,8 +639,8 @@ class ListTask extends Task {
         const items = await item.findElements(selector)
         if (items.length !== 1) throw new Error('not find id of item!')
 
-        if(await items[0].getTagName() === 'a'){
-            id = await items[0].getAttribute('href')
+        if(await items[0].getTagName() === 'a' && this.processConfig.GetItemId?.selector?.attr){
+            id = await items[0].getAttribute(this.processConfig.GetItemId?.selector?.attr)
         }else{
             id = await items[0].getText()
         }
@@ -602,12 +653,14 @@ class ListTask extends Task {
         }
         return id
     }
+
     async itemCompleteCheck(item){
         if(this.conf.CustomStage?.ItemCompleteCheck){
             return this.custom.itemCompleteCheck.call(this,item)
         }
         return true
     }
+
     getItemSelector() {
         const locValue = this.processConfig.GetItemData?.selector?.value
         let selector = this.driver.buildSelectorForXpath(locValue)
@@ -624,6 +677,7 @@ class ListTask extends Task {
         }
         return selector
     }
+
     getListSelector() {
         const locValue = this.processConfig.GetListData?.selector?.value
         let selector = this.driver.buildSelectorForXpath(locValue)
