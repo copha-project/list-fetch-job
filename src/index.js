@@ -31,6 +31,7 @@ class ListTask extends Task {
     }
 
     async runBefore() {
+        this.conf.TargetUrl && await this.driver.open(this.conf.TargetUrl)
         if (this.conf?.CustomStage?.RunBefore) {
             const custom = require(this.getResourcePath('custom','js'))
             await custom?.runBefore.call(this)
@@ -265,7 +266,7 @@ class ListTask extends Task {
         if (this.state) await Utils.saveJson(this.state, this.getPath('state'))
     }
 
-    async goPage(page) {
+    async goPage(page, refresh=false) {
         const goPageInfo = this.processConfig.GoPage
         switch (goPageInfo?.type) {
             case 'url':
@@ -321,12 +322,16 @@ class ListTask extends Task {
             }
         }
 
-        let p = -1
+        if(refresh) return
+
+        await this.driver.sleep(1500)
+        let p = await checkFunc()
         let count = 1
-        if(count > 1) this.log.warn("start waitting page")
-        do {
-            await Utils.sleep(500)
+        while (page != p) {
             try {
+                await this.driver.reload()
+                await this.goPage.call(this, page, true)
+                await this.driver.sleep(1500)
                 p = await checkFunc()
             } catch (error) {
                 this.log.err(`checkFunc error: ${error}`)
@@ -334,8 +339,7 @@ class ListTask extends Task {
             }
             if (count > 100) throw new Error(`not go page: ${page}`)
             count++
-
-        } while (page != p)
+        }
     }
     async getPages() {
         let pages = 1
@@ -349,13 +353,6 @@ class ListTask extends Task {
                     const pagesElment = await this.driver.findElementByXpath(pagesInfo.value)
                     this.log.debug(`get pages element is: ${await pagesElment?.getTagName()}`)
                     pages = await pagesElment?.getText()
-                    if (pagesInfo.regexp) {
-                        try {
-                            pages = parseInt(new RegExp(pagesInfo.regexp).exec(pages)[1])
-                        } catch (error) {
-                            throw new Error('can not parse pages text:' + pagesInfo.regexp)
-                        }
-                    }
                     break
                 }
             case 'css':
@@ -374,6 +371,15 @@ class ListTask extends Task {
             default:
                 break;
         }
+
+        if (pagesInfo.regexp) {
+            try {
+                pages = parseInt(new RegExp(pagesInfo.regexp).exec(pages)[1])
+            } catch (error) {
+                throw new Error('can not parse pages text:' + pagesInfo.regexp)
+            }
+        }
+
         return parseInt(pages)
     }
     async getCurrentPage() {
