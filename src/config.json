@@ -14,10 +14,12 @@
         "WaitExitTime": 0
     },
     "CustomStage":{
+        "ExportData": false,
         "CustomExportData": false,
         "RunBefore": false,
         "GetItemId": false,
         "GetListBefore": false,
+        "GoPageCheck": false,
         "GetCustomItem": false,
         "GoPageAfter": false,
         "DoExtraContentCheck": false,
@@ -68,12 +70,6 @@
                     "value": "",
                     "clickOk": ""
                 }
-            },
-            "customCheck": {
-                "enable": false,
-                "type": "css",
-                "value": "",
-                "display": false
             }
         },
         "GetListData": {

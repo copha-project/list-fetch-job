@@ -4,9 +4,12 @@ class ListTask extends Task {
     constructor() {
         super()
     }
+
     async init(){
         this.#initValue()
+        this.customStage = require(this.getResourcePath('custom','js'))
     }
+
     #initValue() {
         this.processConfig = this.conf.Process
 
@@ -109,6 +112,7 @@ class ListTask extends Task {
 
         this.log.info(`test end.`)
     }
+
     async run(){
         this.log.info(this.getMsg(7,this.name))
         await this.#loadState()
@@ -120,6 +124,7 @@ class ListTask extends Task {
             await Utils.sleep(5000)
         } while (!this.finished)
     }
+
     async #loadState() {
         // 导入任务状态
         this.state = await this.getState()
@@ -130,6 +135,7 @@ class ListTask extends Task {
         // 导入上次任务最后的数据
         this.currentPage = this.lastRunPage = await this.#getLastPage()
     }
+
     async #listFetch() {
         this.log.info('start fetch data')
         while (this.currentPage <= this.pages) {
@@ -158,7 +164,9 @@ class ListTask extends Task {
         // await this.#subFetch()
         this.finished = true
     }
+
     async #subFetch() {}
+
     async #doList() {
         let list = await this.getListData()
         this.log.info(`fetch list data : length ${list.length} , ${this.currentPage}/${this.pages} pages`);
@@ -214,6 +222,7 @@ class ListTask extends Task {
         this.log.info(`save item data of ${id}`)
         return this.storage.save({id,data})
     }
+
     async #find(id) {
         return this.storage.findById(id)
     }
@@ -241,10 +250,12 @@ class ListTask extends Task {
             await this.goPage(this.currentPage)
         }
     }
+
     async #getLastPage() {
         const page = await Utils.readFile(this.getResourcePath('last_page','txt'))
         return parseInt(page) || 1
     }
+
     async #goNext() {
         this.currentPage++
         if (this.pages < this.currentPage) return
@@ -262,6 +273,7 @@ class ListTask extends Task {
         }
         return state
     }
+
     async saveState() {
         if (this.state) await Utils.saveJson(this.state, this.getPath('state'))
     }
@@ -302,37 +314,24 @@ class ListTask extends Task {
                 break;
         }
 
-        let checkFunc = this.getCurrentPage.bind(this)
-
-        await this.goPageAfter()
-
-        if(goPageInfo?.customCheck?.enable){
-            this.log.info('invoke custom check for goPgae')
-            const customCheck = goPageInfo?.customCheck
-            checkFunc = async () => {
-                await this.goPageAfter()
-                let checkItem = await this.driver.findElementsBy(customCheck.type,(customCheck.value))
-                checkItem.length && this.log.debug(`checkFunc find item: ${await checkItem[0].getTagName()}`)
-                if(customCheck.display){
-                    if(checkItem.length==0) return -1
-                }else{
-                    if(checkItem.length>0) return -1
-                }
-                return this.getCurrentPage()
-            }
-        }
-
         if(refresh) return
+
+        let checkFunc = this.getCurrentPage
+
+        if (this.conf?.CustomStage?.GoPageCheck) {
+            const custom = require(this.getResourcePath('custom','js'))
+            checkFunc = custom?.goPageCheck.bind(this)
+            this.log.debug('use custom GoPageCheck')
+        }
 
         await this.driver.sleep(1500)
         let p = await checkFunc()
         let count = 1
         while (page != p) {
             try {
-                await this.driver.reload()
-                await this.goPage.call(this, page, true)
-                await this.driver.sleep(1500)
+                await this.customStage?.goPageErrorHandle.call(this)
                 p = await checkFunc()
+                this.log.debug(`goPage check current page is: ${p}`)
             } catch (error) {
                 this.log.err(`checkFunc error: ${error}`)
                 count += 10
@@ -340,7 +339,10 @@ class ListTask extends Task {
             if (count > 100) throw new Error(`not go page: ${page}`)
             count++
         }
+
+        await this.goPageAfter()
     }
+
     async getPages() {
         let pages = 1
         const pagesInfo = this.processConfig.GetPages[this.processConfig?.GetPages?.use]
@@ -382,6 +384,7 @@ class ListTask extends Task {
 
         return parseInt(pages)
     }
+
     async getCurrentPage() {
         let page = 1
         const usageWay = this.processConfig?.GetCurrentPage?.use
@@ -438,6 +441,7 @@ class ListTask extends Task {
         if (!parseInt(page)) throw new Error('get current page but the value don\'t look right : ' + page)
         return parseInt(page)
     }
+
     async getListData() {
         // 通过配置项来决定怎么获取列表内容，默认设置使用xpath的findElements
         let resList = await this.driver.findElements(this.getListSelector())
