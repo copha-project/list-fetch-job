@@ -28,9 +28,6 @@ class ListTask extends Task {
         this.vTestState = false
         // 正式运行流程运行标志
         this.vStartState = false
-
-        this.driver = null
-        this.custom = null
     }
 
     async runBefore() {
